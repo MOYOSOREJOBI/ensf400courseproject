@@ -1,0 +1,38 @@
+# Stage 1: Build stage - Use the official Gradle image with JDK 11
+FROM gradle:7.6.1-jdk11 AS build
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the gradle configuration files to cache dependencies
+COPY build.gradle gradle.properties /app/
+COPY settings.gradle /app/
+COPY gradle /app/gradle
+COPY gradlew /app/
+
+# Make the gradlew script executable
+RUN chmod +x gradlew
+
+# Pre-download dependencies to optimize build time (caches in Docker layers)
+RUN ./gradlew dependencies --no-daemon
+
+# Copy the source code
+COPY src /app/src
+
+# Build the WAR file
+RUN ./gradlew war --no-daemon
+
+# Stage 2: Runtime stage - Use Tomcat to run the application
+FROM tomcat:9.0-jdk11-openjdk-slim
+
+# Remove default Tomcat applications
+RUN rm -rf /usr/local/tomcat/webapps/*
+
+# Copy the WAR file from the build stage to Tomcat's webapps directory
+COPY --from=build /app/build/libs/*.war /usr/local/tomcat/webapps/ROOT.war
+
+# Expose port 8080 for the application
+EXPOSE 8080
+
+# Command to run when the container starts
+CMD ["catalina.sh", "run"]
